@@ -87,6 +87,11 @@ def parse_args():
         default=os.environ.get("SERVICENOW_CLIENT_SECRET"),
     )
     oauth_group.add_argument(
+        "--refresh-token",
+        help="OAuth refresh token",
+        default=os.environ.get("SERVICENOW_REFRESH_TOKEN"),
+    )
+    oauth_group.add_argument(
         "--token-url",
         help="OAuth token URL",
         default=os.environ.get("SERVICENOW_TOKEN_URL"),
@@ -166,13 +171,14 @@ def create_config(args) -> ServerConfig:
         # Simplified - assuming password grant for now based on previous args
         client_id = args.client_id or os.getenv("SERVICENOW_CLIENT_ID")
         client_secret = args.client_secret or os.getenv("SERVICENOW_CLIENT_SECRET")
+        refresh_token = args.refresh_token or os.getenv("SERVICENOW_REFRESH_TOKEN")
         username = args.username or os.getenv("SERVICENOW_USERNAME")  # Needed for password grant
         password = args.password or os.getenv("SERVICENOW_PASSWORD")  # Needed for password grant
         token_url = args.token_url or os.getenv("SERVICENOW_TOKEN_URL")
 
-        if not client_id or not client_secret or not username or not password:
+        if not client_id or not client_secret:
             raise ValueError(
-                "Client ID, client secret, username, and password are required for OAuth password grant"
+                "Client ID and Client Secret are required for OAuth password grant, Refresh Token is optional, and Username and Password are backups if client credentials fail"
                 " (--client-id/SERVICENOW_CLIENT_ID, etc.)"
             )
         if not token_url:
@@ -184,6 +190,7 @@ def create_config(args) -> ServerConfig:
         oauth_cfg = OAuthConfig(
             client_id=client_id,
             client_secret=client_secret,
+            refresh_token=refresh_token,
             username=username,
             password=password,
             token_url=token_url,

@@ -468,6 +468,7 @@ SERVICENOW_PASSWORD=your-password
 SERVICENOW_AUTH_TYPE=oauth
 SERVICENOW_CLIENT_ID=your-client-id
 SERVICENOW_CLIENT_SECRET=your-client-secret
+SERVICENOW_REFRESH_TOKEN=your-refresh-token  # optional
 SERVICENOW_TOKEN_URL=https://your-instance.service-now.com/oauth_token.do
 ```
 

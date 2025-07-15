@@ -93,32 +93,56 @@ class AuthManager:
             instance_name = instance_parts[0].split("//")[-1]
             token_url = f"https://{instance_name}.service-now.com/oauth_token.do"
 
-        # Prepare Authorization header
-        auth_str = f"{oauth_config.client_id}:{oauth_config.client_secret}"
-        auth_header = base64.b64encode(auth_str.encode()).decode()
         headers = {
-            "Authorization": f"Basic {auth_header}",
+            "Accept": "*/*",
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        # Try client_credentials grant first
-        data_client_credentials = {
-            "grant_type": "client_credentials"
-        }
-        
-        logger.info("Attempting client_credentials grant...")
-        response = requests.post(token_url, headers=headers, data=data_client_credentials)
-        
-        logger.info(f"client_credentials response status: {response.status_code}")
-        logger.info(f"client_credentials response body: {response.text}")
-        
-        if response.status_code == 200:
-            token_data = response.json()
-            self.token = token_data.get("access_token")
-            self.token_type = token_data.get("token_type", "Bearer")
-            return
+        # Try refresh_token grant first
+        if oauth_config.refresh_token:
+            data_refresh_token = {
+                "grant_type": "refresh_token",
+                "client_id": oauth_config.client_id,
+                "client_secret": oauth_config.client_secret,
+                "refresh_token": oauth_config.refresh_token
+            }
+            
+            logger.info("Attempting refresh_token grant...")
+            response = requests.post(token_url, headers=headers, data=data_refresh_token)
+            
+            logger.info(f"client_credentials response status: {response.status_code}")
+            logger.info(f"client_credentials response body: {response.text}")
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self.token = token_data.get("access_token")
+                self.token_type = token_data.get("token_type", "Bearer")
+                return
+            
+        # Try client_credentials grant if refresh_token not provided
+        else:
+            # Prepare Authorization header
+            auth_str = f"{oauth_config.client_id}:{oauth_config.client_secret}"
+            auth_header = base64.b64encode(auth_str.encode()).decode()
+            headers["Authorization"] = f"Basic {auth_header}"
 
-        # Try password grant if client_credentials failed
+            data_client_credentials = {
+                "grant_type": "client_credentials",
+            }
+            
+            logger.info("Attempting client_credentials grant...")
+            response = requests.post(token_url, headers=headers, data=data_client_credentials)
+            
+            logger.info(f"client_credentials response status: {response.status_code}")
+            logger.info(f"client_credentials response body: {response.text}")
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                self.token = token_data.get("access_token")
+                self.token_type = token_data.get("token_type", "Bearer")
+                return
+            
+        # Try password grant if refresh_token and/or client_credentials failed
         if oauth_config.username and oauth_config.password:
             data_password = {
                 "grant_type": "password",
@@ -138,9 +162,9 @@ class AuthManager:
                 self.token_type = token_data.get("token_type", "Bearer")
                 return
 
-        raise ValueError("Failed to get OAuth token using both client_credentials and password grants.")
+        raise ValueError("Failed to get OAuth token using both refresh_token, client_credentials, and password grants.")
     
     def refresh_token(self):
         """Refresh the OAuth token if using OAuth authentication."""
         if self.config.type == AuthType.OAUTH:
-            self._get_oauth_token() 
+            self._get_oauth_token()

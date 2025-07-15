@@ -46,12 +46,13 @@ def setup_oauth():
     print("   - Active: Checked")
     print("   - Refresh Token Lifespan: 8 hours (or your preference)")
     print("   - Access Token Lifespan: 30 minutes (or your preference)")
-    print("6. Save the application and note down the Client ID and Client Secret")
+    print("6. Save the application and note down the Client ID, Client Secret, and Refresh Token")
     print("7. Go to the 'OAuth Scopes' related list and add appropriate scopes (e.g., 'admin')")
     
     # Get OAuth credentials
     client_id = input("\nEnter your Client ID: ")
     client_secret = input("Enter your Client Secret: ")
+    refresh_token = input("Enter your Refresh Token (or press Enter to skip): ")
     
     # Get username and password for resource owner grant
     username = os.getenv("SERVICENOW_USERNAME")
@@ -71,35 +72,64 @@ def setup_oauth():
     
     # Try different OAuth grant types
     access_token = None
+
+    # 1. Try refresh token grant
+    if refresh_token:
+        try:
+            print("\nAttempting refresh_token grant...")
+            token_response = requests.post(
+                token_url,
+                headers={
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": refresh_token
+                }
+            )
+            
+            if token_response.status_code == 200:
+                token_data = token_response.json()
+                access_token = token_data.get("access_token")
+                print("✅ Successfully obtained OAuth token using refresh_token grant!")
+            else:
+                print(f"❌ Failed with refresh_token grant: {token_response.status_code}")
+                print(f"Response: {token_response.text}")
+        except Exception as e:
+            print(f"❌ Error with refresh_token grant: {e}")
     
-    # 1. Try client credentials grant
-    try:
-        print("\nAttempting client_credentials grant...")
-        # Create authorization header
-        auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-        
-        token_response = requests.post(
-            token_url,
-            headers={
-                "Authorization": f"Basic {auth_header}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            data={
-                "grant_type": "client_credentials"
-            }
-        )
-        
-        if token_response.status_code == 200:
-            token_data = token_response.json()
-            access_token = token_data.get("access_token")
-            print("✅ Successfully obtained OAuth token using client_credentials grant!")
-        else:
-            print(f"❌ Failed with client_credentials grant: {token_response.status_code}")
-            print(f"Response: {token_response.text}")
-    except Exception as e:
-        print(f"❌ Error with client_credentials grant: {e}")
+    # 2. Try client credentials grant
+    if not access_token:
+        try:
+            print("\nAttempting client_credentials grant...")
+            # Create authorization header
+            auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            
+            token_response = requests.post(
+                token_url,
+                headers={
+                    "Authorization": f"Basic {auth_header}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data={
+                    "grant_type": "client_credentials"
+                }
+            )
+            
+            if token_response.status_code == 200:
+                token_data = token_response.json()
+                access_token = token_data.get("access_token")
+                print("✅ Successfully obtained OAuth token using client_credentials grant!")
+            else:
+                print(f"❌ Failed with client_credentials grant: {token_response.status_code}")
+                print(f"Response: {token_response.text}")
+        except Exception as e:
+            print(f"❌ Error with client_credentials grant: {e}")
     
-    # 2. Try password grant if client credentials failed
+    # 3. Try password grant if refresh token and/or client credentials failed
     if not access_token:
         try:
             print("\nAttempting password grant...")
@@ -166,6 +196,8 @@ def setup_oauth():
                 env_lines = set_env_var(env_lines, 'SERVICENOW_AUTH_TYPE', 'oauth')
                 env_lines = set_env_var(env_lines, 'SERVICENOW_CLIENT_ID', client_id)
                 env_lines = set_env_var(env_lines, 'SERVICENOW_CLIENT_SECRET', client_secret)
+                if refresh_token:
+                    env_lines = set_env_var(env_lines, 'SERVICENOW_REFRESH_TOKEN', refresh_token)
                 env_lines = set_env_var(env_lines, 'SERVICENOW_TOKEN_URL', token_url)
                 env_lines = set_env_var(env_lines, 'SERVICENOW_USERNAME', username)
                 env_lines = set_env_var(env_lines, 'SERVICENOW_PASSWORD', password)
