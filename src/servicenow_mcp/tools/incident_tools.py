@@ -69,12 +69,15 @@ class ResolveIncidentParams(BaseModel):
 class ListIncidentsParams(BaseModel):
     """Parameters for listing incidents."""
     
-    limit: int = Field(10, description="Maximum number of incidents to return")
-    offset: int = Field(0, description="Offset for pagination")
+    limit: int = Field(10, description="Maximum number of incidents to return", ge=1, le=1000)
+    offset: int = Field(0, description="Offset for pagination", ge=0)
     state: Optional[str] = Field(None, description="Filter by incident state")
     assigned_to: Optional[str] = Field(None, description="Filter by assigned user")
-    category: Optional[str] = Field(None, description="Filter by category")
-    query: Optional[str] = Field(None, description="Search query for incidents")
+    category: Optional[str] = Field(None, description="Filter by category", examples=["Hardware", "Software", "Network", "Inquiry / Help"])
+    priority: Optional[str] = Field(None, description="Filter by priority (1-5 or P0-P4)", pattern=r"^(P[0-4X]|[1-5])$")
+    number: Optional[str] = Field(None, description="Filter by incident number", pattern=r"^INC\d{7}$")
+    query: Optional[str] = Field(None, description="Search query for incidents (searches short_description and description)")
+    date_filters: Optional[dict] = Field(None, description="Dynamic date filters. Format: {'field_name': {'from': 'YYYY-MM-DD', 'to': 'YYYY-MM-DD'}}. Examples: {'sys_created_on': {'from': '2024-01-01'}, 'due_date': {'to': '2024-12-31'}, 'opened_at': {'from': '2024-01-01', 'to': '2024-01-31'}}")
 
 
 class IncidentResponse(BaseModel):
@@ -474,6 +477,7 @@ def list_incidents(
         "sysparm_offset": params.offset,
         "sysparm_display_value": "true",
         "sysparm_exclude_reference_link": "true",
+        "sysparm_query_category": "reporting"
     }
     
     # Add filters
@@ -484,11 +488,53 @@ def list_incidents(
         filters.append(f"assigned_to={params.assigned_to}")
     if params.category:
         filters.append(f"category={params.category}")
+    if params.priority:
+        if params.priority.isdigit():
+            filters.append(f"priority={params.priority}")
+        else:
+            priority_mapping = {'PX': -1, 'P0': 1, 'P1': 2, 'P2': 3, 'P3': 4, 'P4': 5}
+            filters.append(f"priority={priority_mapping[params.priority]}")
+    if params.number:
+        filters.append(f"number={params.number}")
     if params.query:
         filters.append(f"short_descriptionLIKE{params.query}^ORdescriptionLIKE{params.query}")
     
+    # Add date range filters
+    def build_date_filter(field: str, date_from: str = None, date_to: str = None) -> str:
+        """Build a date range filter for ServiceNow."""
+        if not date_from and not date_to:
+            return ""
+        
+        # Format dates for ServiceNow javascript functions
+        def format_date(date_str: str, is_end_of_range: bool = False) -> str:
+            # If only date provided (YYYY-MM-DD), add time
+            if len(date_str) == 10:  # YYYY-MM-DD format
+                time_part = "23:59:59" if is_end_of_range else "00:00:00"
+                date_str = f"{date_str} {time_part}"
+            # Convert to format: YYYY-MM-DD HH:MM:SS
+            return date_str.replace(" ", "','")
+        
+        if date_from and date_to:  # Date range
+            return f"{field}BETWEENjavascript:gs.dateGenerate('{format_date(date_from, False)}')@javascript:gs.dateGenerate('{format_date(date_to, True)}')"
+        elif date_from:  # From date only
+            return f"{field}>=javascript:gs.dateGenerate('{format_date(date_from, False)}')"
+        else:  # To date only
+            return f"{field}<=javascript:gs.dateGenerate('{format_date(date_to, True)}')"
+    
+    # Build dynamic date filters
+    if params.date_filters:
+        for field_name, date_range in params.date_filters.items():
+            date_from = date_range.get('from', None)
+            date_to = date_range.get('to', None)
+            
+            date_filter = build_date_filter(field_name, date_from, date_to)
+            if date_filter:
+                filters.append(date_filter)
+    
     if filters:
         query_params["sysparm_query"] = "^".join(filters)
+
+    logger.info(f"Listing incidents with query params: {query_params}")
     
     # Make request
     try:
@@ -504,24 +550,14 @@ def list_incidents(
         incidents = []
         
         for incident_data in data.get("result", []):
+            # Start with all fields from the API response
+            incident = dict(incident_data)
+            
             # Handle assigned_to field which could be a string or a dictionary
             assigned_to = incident_data.get("assigned_to")
             if isinstance(assigned_to, dict):
-                assigned_to = assigned_to.get("display_value")
+                incident["assigned_to"] = assigned_to.get("display_value")
             
-            incident = {
-                "sys_id": incident_data.get("sys_id"),
-                "number": incident_data.get("number"),
-                "short_description": incident_data.get("short_description"),
-                "description": incident_data.get("description"),
-                "state": incident_data.get("state"),
-                "priority": incident_data.get("priority"),
-                "assigned_to": assigned_to,
-                "category": incident_data.get("category"),
-                "subcategory": incident_data.get("subcategory"),
-                "created_on": incident_data.get("sys_created_on"),
-                "updated_on": incident_data.get("sys_updated_on"),
-            }
             incidents.append(incident)
         
         return {

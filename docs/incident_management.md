@@ -12,7 +12,7 @@ The incident management module allows LLMs to interact with ServiceNow incidents
 
 Retrieves a list of incidents from ServiceNow.
 
-**Resource Name:** `incidents`
+**Resource Name:** `list_incidents`
 
 **Parameters:**
 - `limit` (int, default: 10): Maximum number of incidents to return
@@ -20,11 +20,14 @@ Retrieves a list of incidents from ServiceNow.
 - `state` (string, optional): Filter by incident state
 - `assigned_to` (string, optional): Filter by assigned user
 - `category` (string, optional): Filter by category
-- `query` (string, optional): Search query for incidents
+- `priority` (string, optional): Filter by category
+- `number` (string, optional): Filter by incident number
+- `query` (string, optional): Search query for incidents. Compares against Short Description and Description fields
+- `date_filters` (dict, optional): Dynamic date filters. Format: {'field_name': {'from': 'YYYY-MM-DD', 'to': 'YYYY-MM-DD'}}. Examples: {'sys_created_on': {'from': '2024-01-01'}, 'due_date': {'to': '2024-12-31'}, 'opened_at': {'from': '2024-01-01', 'to': '2024-01-31'}}
 
 **Example:**
 ```python
-incidents = await mcp.get_resource("servicenow", "incidents", {
+incidents = await mcp.get_resource("servicenow", "list_incidents", {
     "limit": 5,
     "state": "1",  # New
     "category": "Software"
@@ -32,23 +35,6 @@ incidents = await mcp.get_resource("servicenow", "incidents", {
 
 for incident in incidents:
     print(f"{incident.number}: {incident.short_description}")
-```
-
-### Get Incident
-
-Retrieves a specific incident from ServiceNow by ID or number.
-
-**Resource Name:** `incident`
-
-**Parameters:**
-- `incident_id` (string): Incident ID or sys_id
-
-**Example:**
-```python
-incident = await mcp.get_resource("servicenow", "incident", "INC0010001")
-print(f"Incident: {incident.number}")
-print(f"Description: {incident.short_description}")
-print(f"State: {incident.state}")
 ```
 
 ## Tools
@@ -176,6 +162,7 @@ ServiceNow incident states are represented by numeric values:
 
 ServiceNow incident priorities are represented by numeric values:
 
+- `-1`: Confidential
 - `1`: Critical
 - `2`: High
 - `3`: Moderate

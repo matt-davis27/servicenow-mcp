@@ -169,6 +169,9 @@ class ServiceNowMCP:
 
         if self.package_definitions:
             self.enabled_tool_names = self.package_definitions.get(self.current_package_name, [])
+            if self.current_package_name != 'none':
+                # This tool is included in all packages except 'none'
+                self.enabled_tool_names.append("list_tool_packages")
         else:
             self.enabled_tool_names = []
 
